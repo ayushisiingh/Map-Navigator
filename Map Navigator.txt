@@ -1,0 +1,270 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <limits.h>
+#include <time.h>
+
+#define MAX_NODES 1000
+
+typedef struct Edge {
+    int destination;
+    int distance;
+    int traffic;
+    struct Edge* next;
+} Edge;
+
+typedef struct Node {
+    Edge* head;
+} Node;
+
+typedef struct Graph {
+    int numNodes;
+    Node* nodes;
+} Graph;
+
+Graph* createGraph(int numNodes) {
+    Graph* graph = (Graph*)malloc(sizeof(Graph));
+    graph->numNodes = numNodes;
+    graph->nodes = (Node*)malloc(numNodes * sizeof(Node));
+    for (int i = 0; i < numNodes; i++) {
+        graph->nodes[i].head = NULL;
+    }
+    return graph;
+}
+
+Edge* createEdge(int destination, int distance, int traffic) {
+    Edge* newEdge = (Edge*)malloc(sizeof(Edge));
+    newEdge->destination = destination;
+    newEdge->distance = distance;
+    newEdge->traffic = traffic;
+    newEdge->next = NULL;
+    return newEdge;
+}
+
+void addEdge(Graph* graph, int src, int dest, int distance, int traffic) {
+    Edge* newEdge = createEdge(dest, distance, traffic);
+    newEdge->next = graph->nodes[src].head;
+    graph->nodes[src].head = newEdge;
+
+    // For undirected graph, add an edge from dest to src
+    newEdge = createEdge(src, distance, traffic);
+    newEdge->next = graph->nodes[dest].head;
+    graph->nodes[dest].head = newEdge;
+}
+
+typedef struct MinHeapNode {
+    int vertex;
+    int distance;
+    int traffic;
+} MinHeapNode;
+
+typedef struct MinHeap {
+    int size;
+    int capacity;
+    int* pos;
+    MinHeapNode** array;
+} MinHeap;
+
+MinHeapNode* newMinHeapNode(int v, int dist, int traffic) {
+    MinHeapNode* minHeapNode = (MinHeapNode*)malloc(sizeof(MinHeapNode));
+    minHeapNode->vertex = v;
+    minHeapNode->distance = dist;
+    minHeapNode->traffic = traffic;
+    return minHeapNode;
+}
+
+MinHeap* createMinHeap(int capacity) {
+    MinHeap* minHeap = (MinHeap*)malloc(sizeof(MinHeap));
+    minHeap->pos = (int*)malloc(capacity * sizeof(int));
+    minHeap->size = 0;
+    minHeap->capacity = capacity;
+    minHeap->array = (MinHeapNode*)malloc(capacity * sizeof(MinHeapNode));
+    return minHeap;
+}
+
+void swapMinHeapNode(MinHeapNode** a, MinHeapNode** b) {
+    MinHeapNode* t = *a;
+    *a = *b;
+    *b = t;
+}
+
+void minHeapify(MinHeap* minHeap, int idx) {
+    int smallest, left, right;
+    smallest = idx;
+    left = 2 * idx + 1;
+    right = 2 * idx + 2;
+
+    if (left < minHeap->size && 
+        (minHeap->array[left]->distance < minHeap->array[smallest]->distance || 
+        (minHeap->array[left]->distance == minHeap->array[smallest]->distance && minHeap->array[left]->traffic < minHeap->array[smallest]->traffic))) {
+        smallest = left;
+    }
+
+    if (right < minHeap->size && 
+        (minHeap->array[right]->distance < minHeap->array[smallest]->distance || 
+        (minHeap->array[right]->distance == minHeap->array[smallest]->distance && minHeap->array[right]->traffic < minHeap->array[smallest]->traffic))) {
+        smallest = right;
+    }
+
+    if (smallest != idx) {
+        MinHeapNode* smallestNode = minHeap->array[smallest];
+        MinHeapNode* idxNode = minHeap->array[idx];
+
+        minHeap->pos[smallestNode->vertex] = idx;
+        minHeap->pos[idxNode->vertex] = smallest;
+
+        swapMinHeapNode(&minHeap->array[smallest], &minHeap->array[idx]);
+
+        minHeapify(minHeap, smallest);
+    }
+}
+
+int isEmpty(MinHeap* minHeap) {
+    return minHeap->size == 0;
+}
+
+MinHeapNode* extractMin(MinHeap* minHeap) {
+    if (isEmpty(minHeap)) {
+        return NULL;
+    }
+
+    MinHeapNode* root = minHeap->array[0];
+    MinHeapNode* lastNode = minHeap->array[minHeap->size - 1];
+    minHeap->array[0] = lastNode;
+
+    minHeap->pos[root->vertex] = minHeap->size - 1;
+    minHeap->pos[lastNode->vertex] = 0;
+
+    --minHeap->size;
+    minHeapify(minHeap, 0);
+
+    return root;
+}
+
+void decreaseKey(MinHeap* minHeap, int v, int dist, int traffic) {
+    int i = minHeap->pos[v];
+
+    minHeap->array[i]->distance = dist;
+    minHeap->array[i]->traffic = traffic;
+
+    while (i && 
+           (minHeap->array[i]->distance < minHeap->array[(i - 1) / 2]->distance || 
+           (minHeap->array[i]->distance == minHeap->array[(i - 1) / 2]->distance && minHeap->array[i]->traffic < minHeap->array[(i - 1) / 2]->traffic))) {
+        minHeap->pos[minHeap->array[i]->vertex] = (i - 1) / 2;
+        minHeap->pos[minHeap->array[(i - 1) / 2]->vertex] = i;
+        swapMinHeapNode(&minHeap->array[i], &minHeap->array[(i - 1) / 2]);
+
+        i = (i - 1) / 2;
+    }
+}
+
+int isInMinHeap(MinHeap* minHeap, int v) {
+    if (minHeap->pos[v] < minHeap->size) {
+        return 1;
+    }
+    return 0;
+}
+
+void printPath(int parent[], int j) {
+    if (parent[j] == -1) {
+        return;
+    }
+    printPath(parent, parent[j]);
+    printf("%d ", j);
+}
+
+void printSolution(int dist[], int traffic[], int n, int parent[], int src) {
+    printf("Vertex\t Distance\tTraffic\tPath");
+    for (int i = 0; i < n; ++i) {
+        printf("\n%d -> %d\t %d\t%d\t%d ", src, i, dist[i], traffic[i], src);
+        printPath(parent, i);
+    }
+}
+
+void dijkstra(Graph* graph, int src) {
+    int V = graph->numNodes;
+    int dist[V];
+    int traffic[V];
+    int parent[V];
+
+    MinHeap* minHeap = createMinHeap(V);
+
+    for (int v = 0; v < V; ++v) {
+        dist[v] = INT_MAX;
+        traffic[v] = INT_MAX;
+        minHeap->array[v] = newMinHeapNode(v, dist[v], traffic[v]);
+        minHeap->pos[v] = v;
+        parent[v] = -1;
+    }
+
+    minHeap->array[src] = newMinHeapNode(src, dist[src], traffic[src]);
+    minHeap->pos[src] = src;
+    dist[src] = 0;
+    traffic[src] = 0;
+    decreaseKey(minHeap, src, dist[src], traffic[src]);
+
+    minHeap->size = V;
+
+    while (!isEmpty(minHeap)) {
+        MinHeapNode* minHeapNode = extractMin(minHeap);
+        int u = minHeapNode->vertex;
+
+        Edge* pCrawl = graph->nodes[u].head;
+        while (pCrawl != NULL) {
+            int v = pCrawl->destination;
+
+            if (isInMinHeap(minHeap, v) && 
+                (dist[u] != INT_MAX && 
+                (dist[u] + pCrawl->distance < dist[v] || 
+                (dist[u] + pCrawl->distance == dist[v] && traffic[u] + pCrawl->traffic < traffic[v])))) {
+                dist[v] = dist[u] + pCrawl->distance;
+                traffic[v] = traffic[u] + pCrawl->traffic;
+                parent[v] = u;
+                decreaseKey(minHeap, v, dist[v], traffic[v]);
+            }
+            pCrawl = pCrawl->next;
+        }
+    }
+
+    printSolution(dist, traffic, V, parent, src);
+}
+
+// Function to generate a random graph
+void generateRandomGraph(Graph* graph, int numEdges) {
+    srand(time(0));
+    for (int i = 0; i < numEdges; i++) {
+        int src = rand() % graph->numNodes;
+        int dest = rand() % graph->numNodes;
+        int distance = rand() % 100 + 1;
+        int traffic = rand() % 100 + 1;
+        if (src != dest) {
+            addEdge(graph, src, dest, distance, traffic);
+        }
+    }
+}
+
+int main() {
+    int numNodes = MAX_NODES;
+    int numEdges = numNodes * 10; // Adjust based on desired graph density
+
+    Graph* graph = createGraph(numNodes);
+
+    // Generate a random graph
+    generateRandomGraph(graph, numEdges);
+
+    int src = 0; // Set your source node
+    dijkstra(graph, src);
+
+    // Free allocated memory
+    for (int i = 0; i < numNodes; i++) {
+        Edge* current = graph->nodes[i].head;
+        while (current != NULL) {
+            Edge* temp = current;
+            current = current->next;
+            free(temp);
+        }
+    }
+    free(graph->nodes);
+    free(graph);
+
+    return 0;
+}
